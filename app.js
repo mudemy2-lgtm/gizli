@@ -2,7 +2,7 @@ import { createVault, VaultError } from './vault.js';
 import { idbStore } from './idb.js';
 import { createMedia } from './media.js';
 
-const VERSION = '0.4.0 · 6 haneli parola, klasör yönetimi';
+const VERSION = '0.4.1 · güvenlik kuralı (CSP)';
 const store = idbStore();
 const media = createMedia(store);
 const vault = createVault(store, { onReset: id => media.deleteFolder(id) });
