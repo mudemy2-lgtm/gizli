@@ -2,7 +2,7 @@ import { createVault, VaultError } from './vault.js';
 import { idbStore } from './idb.js';
 import { createMedia } from './media.js';
 
-const VERSION = '0.2.0 · Faz 2';
+const VERSION = '0.2.1 · Faz 2';
 const store = idbStore();
 const media = createMedia(store);
 const vault = createVault(store, { onReset: id => media.deleteFolder(id) });
@@ -431,6 +431,7 @@ function openViewer(id, items, start) {
   let token = 0;
   let curUrl = null;
   let closed = false;
+  let needRefresh = false;
   const stage = h('div', { class: 'stage' });
   const title = h('span', { class: 'vtitle' });
   const root = h('div', { class: 'viewer' },
@@ -454,6 +455,7 @@ function openViewer(id, items, start) {
     playing.clear();
     root.remove();
     viewerClose = null;
+    if (needRefresh) render();
   }
   viewerClose = closeV;
 
@@ -472,6 +474,15 @@ function openViewer(id, items, start) {
       const el = it.kind === 'vid'
         ? h('video', { src: curUrl, controls: true, playsinline: true })
         : h('img', { src: curUrl, alt: '' });
+      if (it.kind === 'vid' && !it.w) {
+        // Eklerken küçük resim üretilemediyse, ilk izleme sırasında kareyi yakalayıp kaydet
+        const grab = () => {
+          if (!el.videoWidth) return;
+          media.saveThumb(s, it.fid, el, el.videoWidth, el.videoHeight).then(() => { it.w = el.videoWidth; it.h = el.videoHeight; needRefresh = true; }).catch(() => {});
+        };
+        el.addEventListener('seeked', grab, { once: true });
+        el.addEventListener('loadeddata', () => { try { el.currentTime = Math.min(1, (el.duration || 1) / 10); } catch (_) { grab(); } }, { once: true });
+      }
       el.addEventListener('error', () => {
         if (t === token) stage.replaceChildren(h('div', { class: 'msg' }, 'Bu dosya görüntülenemedi (biçimi desteklenmiyor olabilir).'));
       });

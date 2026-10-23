@@ -73,35 +73,65 @@ async function imageThumb(file) {
 
 async function videoThumb(file) {
   const url = URL.createObjectURL(file);
+  // iOS Safari, ekranda olmayan (DOM'a eklenmemiş) video öğesini çoğu zaman çözmez; bu yüzden
+  // görünmez ama sayfaya bağlı bir öğe kullanıyoruz.
+  const v = document.createElement('video');
+  v.muted = true;
+  v.defaultMuted = true;
+  v.playsInline = true;
+  v.setAttribute('playsinline', '');
+  v.setAttribute('muted', '');
+  v.preload = 'auto';
+  v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:-1';
+  document.body.append(v);
+  const waitFor = (names, ms) => new Promise(res => {
+    let done = false;
+    const fin = ok => { if (done) return; done = true; clearTimeout(t); names.forEach(n => v.removeEventListener(n, h)); res(ok); };
+    const h = () => fin(true);
+    const t = setTimeout(() => fin(false), ms);
+    names.forEach(n => v.addEventListener(n, h));
+  });
   try {
-    const v = document.createElement('video');
-    v.muted = true;
-    v.playsInline = true;
-    v.preload = 'auto';
     v.src = url;
-    await new Promise((res, rej) => {
-      const t = setTimeout(() => rej(new Error('zaman aşımı')), 7000);
-      v.onloadeddata = () => { clearTimeout(t); res(); };
-      v.onerror = () => { clearTimeout(t); rej(new Error('video okunamadı')); };
-    });
-    try {
-      v.currentTime = Math.min(1, (v.duration || 1) / 10);
-      await new Promise(res => { v.onseeked = res; setTimeout(res, 2500); });
-    } catch (_) { /* ilk kare ile devam */ }
+    v.load();
+    const hasFrame = () => v.readyState >= 2 && v.videoWidth > 0;
+    // 1) veri yüklenmesini bekle; gelmezse sessiz oynatmayı dene (iOS'ta kareyi çözdürür)
+    if (!hasFrame()) await waitFor(['loadeddata', 'canplay'], 4000);
+    if (!hasFrame()) {
+      try { await v.play(); } catch (_) { /* izin verilmezse devam */ }
+      await waitFor(['loadeddata', 'canplay', 'playing', 'timeupdate'], 6000);
+      try { v.pause(); } catch (_) { /* yoksay */ }
+    }
+    if (!v.videoWidth || !v.videoHeight) throw new Error('video çözülemedi');
+    // 2) birkaç saniyelik/başlangıç dışı bir kareye git (siyah ilk karelerden kaçınmak için)
+    const dur = isFinite(v.duration) ? v.duration : 0;
+    const target = dur > 0 ? Math.min(1, dur / 10) : 0;
+    if (target > 0.05) {
+      try {
+        const seeked = waitFor(['seeked'], 3000);
+        v.currentTime = target;
+        await seeked;
+      } catch (_) { /* ilk kare ile devam */ }
+    }
+    // 3) karenin gerçekten çizildiğinden emin ol
+    if (typeof v.requestVideoFrameCallback === 'function') {
+      await new Promise(res => { const t = setTimeout(res, 400); v.requestVideoFrameCallback(() => { clearTimeout(t); res(); }); });
+    }
     const w = v.videoWidth, ht = v.videoHeight;
-    if (!w || !ht) throw new Error('boyut okunamadı');
-    const blob = await drawThumb(v, w, ht);
+    return { blob: await drawThumb(v, w, ht), w, h: ht };
+  } finally {
+    try { v.pause(); } catch (_) { /* yoksay */ }
     v.removeAttribute('src');
     v.load();
-    return { blob, w, h: ht };
-  } finally {
+    v.remove();
     URL.revokeObjectURL(url);
   }
 }
 
+export let lastThumbError = '';
 async function makeThumb(file, kind) {
   try { return kind === 'vid' ? await videoThumb(file) : await imageThumb(file); }
-  catch (_) { return null; } // küçük resim olmazsa ızgarada yer tutucu gösterilir
+  catch (e) { lastThumbError = (e && e.message) || String(e); return null; } // küçük resim olmazsa ızgarada yer tutucu gösterilir
 }
 
 /* ---------- Şifre yardımcıları ---------- */
@@ -183,6 +213,13 @@ export function createMedia(store) {
     return URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
   }
 
+  // Sonradan (ör. izlerken) yakalanan kareyi küçük resim olarak kaydeder.
+  async function saveThumb(session, fid, source, w, ht) {
+    const blob = await drawThumb(source, w, ht);
+    const st = await seal(session.key, aadOf(session.id, 'thumb', fid), new Uint8Array(await blob.arrayBuffer()));
+    await store.putThumb({ id: recId(session.id, fid), iv: st.iv, ct: st.ct });
+  }
+
   // Dosyanın tamamını çözüp Blob olarak döndürür.
   async function open(session, item, onProgress) {
     const rec = await store.getFile(recId(session.id, item.fid));
@@ -206,5 +243,5 @@ export function createMedia(store) {
     await store.deleteFolderFiles(folder);
   }
 
-  return { add, list, thumbUrl, open, remove, deleteFolder };
+  return { add, list, thumbUrl, saveThumb, open, remove, deleteFolder };
 }
