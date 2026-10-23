@@ -118,7 +118,7 @@ async function videoThumb(file) {
       await new Promise(res => { const t = setTimeout(res, 400); v.requestVideoFrameCallback(() => { clearTimeout(t); res(); }); });
     }
     const w = v.videoWidth, ht = v.videoHeight;
-    return { blob: await drawThumb(v, w, ht), w, h: ht };
+    return { blob: await drawThumb(v, w, ht), w, h: ht, dur };
   } finally {
     try { v.pause(); } catch (_) { /* yoksay */ }
     v.removeAttribute('src');
@@ -169,7 +169,8 @@ export function createMedia(store) {
         kind,
         lens: res.lens,
         w: th ? th.w : 0,
-        h: th ? th.h : 0
+        h: th ? th.h : 0,
+        dur: th && th.dur ? th.dur : 0
       };
       const sm = await seal(session.key, aadOf(folder, 'meta', fid), te.encode(JSON.stringify(meta)));
       if (th) {
