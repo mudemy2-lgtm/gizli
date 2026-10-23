@@ -158,8 +158,9 @@ export function createVault(store, opts = {}) {
   // Faz 2'de burada klasörün şifreli dosyaları da silinecek.
   async function reset(id) {
     checkId(id);
-    await store.delete(id);
+    // Önce dosyalar silinir: bu adım başarısız olursa klasör kaydı korunur ve yeniden denenebilir.
     if (opts.onReset) await opts.onReset(id);
+    await store.delete(id);
   }
 
   async function slots() {
