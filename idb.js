@@ -39,6 +39,7 @@ export function idbStore() {
   return {
     // klasör kayıtları (vault.js bunları kullanır)
     get: id => run(['folders'], 'readonly', s => s.get(id)),
+    all: () => run(['folders'], 'readonly', s => s.getAll()),
     put: rec => run(['folders'], 'readwrite', s => s.put(rec)),
     delete: id => run(['folders'], 'readwrite', s => s.delete(id)),
 

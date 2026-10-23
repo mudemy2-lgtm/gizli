@@ -7,8 +7,6 @@
 //  - Parola değişince yalnızca MK yeniden sarılır; dosyalara dokunulmaz.
 //  - Parola doğrulaması ayrıca saklanmaz: MK doğru çözülürse parola doğrudur (AES-GCM etiketi).
 
-export const SLOT_IDS = [1, 2, 3, 4];
-
 export class VaultError extends Error {
   constructor(code, msg, extra) {
     super(msg || code);
@@ -29,7 +27,7 @@ export function createVault(store, opts = {}) {
   const FREE_TRIES = 5;
 
   function checkId(id) {
-    if (!SLOT_IDS.includes(id)) throw new VaultError('badid', 'Geçersiz klasör.');
+    if (!Number.isInteger(id) || id < 1) throw new VaultError('badid', 'Geçersiz klasör.');
   }
 
   async function kekFrom(password, salt, iter) {
@@ -163,14 +161,31 @@ export function createVault(store, opts = {}) {
     await store.delete(id);
   }
 
-  async function slots() {
-    const out = [];
-    for (const id of SLOT_IDS) {
-      const rec = await store.get(id);
-      out.push({ id, exists: !!rec, lockUntil: rec ? (rec.lockUntil || 0) : 0 });
+  // Klasörü parolasını doğrulayarak siler (yanlış parola sayaca işler).
+  async function remove(id, password) {
+    checkId(id);
+    const rec = await store.get(id);
+    if (!rec) throw new VaultError('empty', 'Klasör bulunamadı.');
+    checkLock(rec);
+    try {
+      (await openRaw(rec, id, password)).fill(0);
+    } catch (e) {
+      return registerFail(rec);
     }
-    return out;
+    await reset(id);
   }
 
-  return { setup, unlock, rename, changePassword, reset, slots };
+  // Kurulu klasörler (eskiden yeniye).
+  async function slots() {
+    const recs = (await store.all()).slice().sort((a, b) => (a.created || 0) - (b.created || 0) || a.id - b.id);
+    return recs.map(r => ({ id: r.id, exists: true, lockUntil: r.lockUntil || 0 }));
+  }
+
+  // Yeni klasör için boş numara.
+  async function nextId() {
+    const recs = await store.all();
+    return recs.reduce((m, r) => Math.max(m, r.id), 0) + 1;
+  }
+
+  return { setup, unlock, rename, changePassword, reset, remove, slots, nextId };
 }

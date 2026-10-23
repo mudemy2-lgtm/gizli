@@ -1,5 +1,5 @@
 // Uygulama kabuğunu önbelleğe alır; çevrimdışı açılır, güncellemeler arka planda iner.
-const CACHE = 'gizli-shell-v4';
+const CACHE = 'gizli-shell-v5';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'vault.js', 'idb.js', 'media.js', 'media.worker.js',
   'manifest.webmanifest', 'icon-180.png', 'icon-512.png'];
 

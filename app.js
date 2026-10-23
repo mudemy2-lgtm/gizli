@@ -2,7 +2,7 @@ import { createVault, VaultError } from './vault.js';
 import { idbStore } from './idb.js';
 import { createMedia } from './media.js';
 
-const VERSION = '0.3.0 · Fotoğraflar arayüzü';
+const VERSION = '0.4.0 · 6 haneli parola, klasör yönetimi';
 const store = idbStore();
 const media = createMedia(store);
 const vault = createVault(store, { onReset: id => media.deleteFolder(id) });
@@ -141,32 +141,20 @@ function openModal(title, body, actions, opts) {
 }
 
 function applyKb(input) {
-  if (settings.kbd === 'num') {
-    input.setAttribute('inputmode', 'numeric');
-    input.setAttribute('pattern', '[0-9]*');
-  } else {
-    input.setAttribute('inputmode', 'text');
-    input.removeAttribute('pattern');
-  }
+  input.setAttribute('inputmode', 'numeric');
+  input.setAttribute('pattern', '[0-9]*');
 }
 
-function setKb(mode) {
-  settings.kbd = mode;
-  saveSettings(settings);
-  document.querySelectorAll('input[data-pw]').forEach(applyKb);
-  document.querySelectorAll('button[data-kb]').forEach(b => { b.textContent = settings.kbd === 'num' ? 'ABC' : '123'; });
-}
+const PIN_RE = /^\d{6}$/;
+const PIN_HELP = 'Parola tam 6 rakam olmalı.';
 
-function pwField(label) {
+function pwField(label, exact) {
   const input = h('input', {
     type: 'password', autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off',
     spellcheck: 'false', placeholder: label, 'aria-label': label, 'data-pw': '1'
   });
+  if (exact) input.setAttribute('maxlength', '6');
   applyKb(input);
-  const kb = h('button', {
-    class: 'kb', type: 'button', 'data-kb': '1', 'aria-label': 'Klavye türünü değiştir',
-    onclick: () => { setKb(settings.kbd === 'num' ? 'text' : 'num'); input.blur(); input.focus(); }
-  }, settings.kbd === 'num' ? 'ABC' : '123');
   const eye = h('button', {
     class: 'eye', type: 'button',
     onclick: () => {
@@ -174,18 +162,7 @@ function pwField(label) {
       eye.textContent = input.type === 'password' ? 'Göster' : 'Gizle';
     }
   }, 'Göster');
-  return { input, el: h('div', { class: 'pw' }, input, kb, eye) };
-}
-
-// Yalnızca rakamlı parolada engellemeden hafif bir uyarı gösterir.
-function digitsHint(input) {
-  const p = h('p', { class: 'note' });
-  input.addEventListener('input', () => {
-    p.textContent = /^\d+$/.test(input.value)
-      ? 'Sadece rakamlı parola: ne kadar uzunsa o kadar güvenli (8 veya daha fazla rakam önerilir).'
-      : '';
-  });
-  return p;
+  return { input, el: h('div', { class: 'pw' }, input, eye) };
 }
 
 function explain(e) {
@@ -205,13 +182,14 @@ function enterOnSubmit(inputs, submit) {
 }
 
 /* ---------- Diyaloglar ---------- */
-function setupDialog(id) {
+async function setupDialog() {
+  const id = await vault.nextId();
   const name = h('input', {
     type: 'text', placeholder: 'Klasör adı (isteğe bağlı)', maxlength: '40',
     autocomplete: 'off', autocorrect: 'off'
   });
-  const p1 = pwField('Parola (en az 6 karakter)');
-  const p2 = pwField('Parolayı tekrar yaz');
+  const p1 = pwField('Parola (6 rakam)', true);
+  const p2 = pwField('Parolayı tekrar yaz', true);
   const err = h('p', { class: 'err' });
   const cancel = h('button', { onclick: closeModal }, 'Vazgeç');
   const go = h('button', { class: 'primary' }, 'Klasörü kur');
@@ -219,7 +197,7 @@ function setupDialog(id) {
   async function submit() {
     if (go.disabled) return;
     err.textContent = '';
-    if (p1.input.value.length < 6) { err.textContent = 'Parola en az 6 karakter olmalı.'; return; }
+    if (!PIN_RE.test(p1.input.value)) { err.textContent = PIN_HELP; return; }
     if (p1.input.value !== p2.input.value) { err.textContent = 'Parolalar aynı değil.'; return; }
     go.disabled = true; go.textContent = 'Kuruluyor…';
     try {
@@ -236,8 +214,8 @@ function setupDialog(id) {
   }
   go.addEventListener('click', submit);
   enterOnSubmit([name, p1.input, p2.input], submit);
-  openModal('Klasör ' + id + ' kur',
-    h('div', {}, name, p1.el, p2.el, digitsHint(p1.input),
+  openModal('Yeni klasör',
+    h('div', {}, name, p1.el, p2.el,
       h('p', { class: 'note' }, 'Parolayı unutursan içeriği kurtarmanın yolu yok. Güvenli bir yere yaz.'), err),
     [cancel, go]);
 }
@@ -270,14 +248,14 @@ function unlockDialog(id) {
   }
   go.addEventListener('click', submit);
   enterOnSubmit([pw.input], submit);
-  openModal('Klasör ' + id + ' kilitli', h('div', {}, pw.el, err, forgot), [cancel, go]);
+  openModal('Klasör kilitli', h('div', {}, pw.el, err, forgot), [cancel, go]);
 }
 
 function resetDialog(id) {
   const conf = h('input', { type: 'text', placeholder: 'Onaylamak için SİL yaz', autocomplete: 'off', autocapitalize: 'characters' });
   const err = h('p', { class: 'err' });
   const cancel = h('button', { onclick: closeModal }, 'Vazgeç');
-  const go = h('button', { class: 'danger' }, 'Sıfırla ve sil');
+  const go = h('button', { class: 'danger' }, 'Klasörü sil');
   go.addEventListener('click', async () => {
     const v = conf.value.trim().toLocaleUpperCase('tr').replace('İ', 'I');
     if (v !== 'SIL') { err.textContent = 'Onay için SİL yazmalısın.'; return; }
@@ -286,16 +264,16 @@ function resetDialog(id) {
       await vault.reset(id);
       sessions.delete(id);
       closeModal();
-      toast('Klasör ' + id + ' sıfırlandı');
+      toast('Klasör silindi');
       render();
     } catch (e) {
       err.textContent = explain(e);
-      go.disabled = false; go.textContent = 'Sıfırla ve sil';
+      go.disabled = false; go.textContent = 'Klasörü sil';
     }
   });
-  openModal('Klasör ' + id + ' sıfırlansın mı?',
+  openModal('Klasör silinsin mi?',
     h('div', {},
-      h('p', {}, 'Parola kurtarılamaz. Devam edersen bu klasördeki her şey kalıcı olarak silinir ve klasör boş hale gelir.'),
+      h('p', {}, 'Parola kurtarılamaz. Devam edersen bu klasör ve içindeki her şey kalıcı olarak silinir.'),
       conf, err),
     [cancel, go]);
 }
@@ -319,15 +297,15 @@ function renameDialog(id) {
 
 function changePwDialog(id) {
   const old = pwField('Şimdiki parola');
-  const n1 = pwField('Yeni parola (en az 6 karakter)');
-  const n2 = pwField('Yeni parolayı tekrar yaz');
+  const n1 = pwField('Yeni parola (6 rakam)', true);
+  const n2 = pwField('Yeni parolayı tekrar yaz', true);
   const err = h('p', { class: 'err' });
   const cancel = h('button', { onclick: closeModal }, 'Vazgeç');
   const go = h('button', { class: 'primary' }, 'Parolayı değiştir');
   async function submit() {
     if (go.disabled) return;
     err.textContent = '';
-    if (n1.input.value.length < 6) { err.textContent = 'Yeni parola en az 6 karakter olmalı.'; return; }
+    if (!PIN_RE.test(n1.input.value)) { err.textContent = PIN_HELP; return; }
     if (n1.input.value !== n2.input.value) { err.textContent = 'Yeni parolalar aynı değil.'; return; }
     go.disabled = true; go.textContent = 'Değiştiriliyor…';
     try {
@@ -341,14 +319,44 @@ function changePwDialog(id) {
   }
   go.addEventListener('click', submit);
   enterOnSubmit([old.input, n1.input, n2.input], submit);
-  openModal('Parolayı değiştir', h('div', {}, old.el, n1.el, n2.el, digitsHint(n1.input), err), [cancel, go]);
+  openModal('Parolayı değiştir', h('div', {}, old.el, n1.el, n2.el, err), [cancel, go]);
+}
+
+function deleteFolderDialog(id) {
+  const s = sessions.get(id);
+  const pw = pwField('Parola');
+  const err = h('p', { class: 'err' });
+  const cancel = h('button', { onclick: closeModal }, 'Vazgeç');
+  const go = h('button', { class: 'danger' }, 'Klasörü sil');
+  async function submit() {
+    if (go.disabled) return;
+    if (!pw.input.value) { err.textContent = 'Parolayı gir.'; return; }
+    go.disabled = true; go.textContent = 'Siliniyor…'; err.textContent = '';
+    try {
+      await vault.remove(id, pw.input.value);
+      pw.input.value = '';
+      sessions.delete(id);
+      closeModal();
+      view = { name: 'home' };
+      toast('Klasör silindi');
+      render();
+      return;
+    } catch (e) { pw.input.value = ''; err.textContent = explain(e); }
+    go.disabled = false; go.textContent = 'Klasörü sil';
+  }
+  go.addEventListener('click', submit);
+  enterOnSubmit([pw.input], submit);
+  openModal('“' + s.name + '” silinsin mi?',
+    h('div', {}, h('p', {}, 'Klasör ve içindeki tüm fotoğraf ve videolar kalıcı olarak silinir. Bu geri alınamaz. Onaylamak için parolayı yaz.'), pw.el, err),
+    [cancel, go]);
 }
 
 function folderOptions(id) {
   openModal('Klasör seçenekleri',
     h('div', { class: 'list' },
       h('button', { class: 'row-btn', onclick: () => renameDialog(id) }, 'Klasörün adını değiştir'),
-      h('button', { class: 'row-btn', onclick: () => changePwDialog(id) }, 'Parolayı değiştir')),
+      h('button', { class: 'row-btn', onclick: () => changePwDialog(id) }, 'Parolayı değiştir'),
+      h('button', { class: 'row-btn danger', onclick: () => deleteFolderDialog(id) }, 'Klasörü sil')),
     [h('button', { onclick: closeModal }, 'Kapat')]);
 }
 
@@ -698,14 +706,12 @@ function openViewer(id, items, start) {
 async function homeView() {
   const slots = await vault.slots();
   const covers = [];
-  const tiles = slots.map(s => {
+  const tiles = slots.map((s, n) => {
     const open = sessions.has(s.id);
     const tmp = s.lockUntil > Date.now();
-    let title = 'Klasör ' + s.id, sub = 'Boş · kurmak için dokun';
+    let title = 'Klasör ' + (n + 1), sub;
     const cover = h('div', { class: 'cover' });
-    if (!s.exists) {
-      cover.append(icon('plus'));
-    } else if (open) {
+    if (open) {
       title = sessions.get(s.id).name; sub = 'Açık';
       cover.append(icon('photo'), h('span', { class: 'glass lk' }, icon('unlock')));
       covers.push([s.id, cover, sub]);
@@ -714,14 +720,16 @@ async function homeView() {
       cover.append(icon('lock'));
     }
     return h('button', {
-      class: 'tile' + (open ? ' open' : '') + (s.exists ? '' : ' empty'),
+      class: 'tile' + (open ? ' open' : ''),
       onclick: () => {
-        if (!s.exists) setupDialog(s.id);
-        else if (sessions.has(s.id)) { view = { name: 'folder', id: s.id }; render(); }
+        if (sessions.has(s.id)) { view = { name: 'folder', id: s.id }; render(); }
         else unlockDialog(s.id);
       }
     }, cover, h('div', { class: 't' }, title), h('div', { class: 'sub' }, sub));
   });
+  const addCover = h('div', { class: 'cover' }, icon('plus'));
+  tiles.push(h('button', { class: 'tile empty new', 'aria-label': 'Yeni klasör', onclick: () => setupDialog() },
+    addCover, h('div', { class: 't' }, 'Yeni klasör'), h('div', { class: 'sub' }, 'Parolayla korunur')));
   const node = h('div', { class: 'screen' },
     h('div', { class: 'top' }, h('h1', {}, 'Gizli'),
       h('button', { class: 'glass round', 'aria-label': 'Ayarlar', onclick: () => { view = { name: 'settings' }; render(); } }, icon('gear'))),
@@ -919,10 +927,6 @@ async function settingsView() {
     return s;
   };
 
-  const kbSel = h('select', { onchange: () => setKb(kbSel.value) },
-    h('option', { value: 'num', selected: settings.kbd === 'num' }, 'Sayısal (rakam klavyesi)'),
-    h('option', { value: 'text', selected: settings.kbd !== 'num' }, 'Normal (harf ve rakam)'));
-
   const persistBtn = h('button', {
     class: 'row-btn',
     onclick: async () => {
@@ -939,9 +943,7 @@ async function settingsView() {
       h('span', { class: 'lbl' }, 'Arka plana geçince kilitle'),
       sel('bg', [[0, 'Hemen'], [30, '30 saniye sonra'], [120, '2 dakika sonra'], [-1, 'Kilitleme']]),
       h('span', { class: 'lbl' }, 'Hareketsiz kalınca kilitle'),
-      sel('idle', [[60, '1 dakika'], [300, '5 dakika'], [900, '15 dakika'], [0, 'Hiçbir zaman']]),
-      h('span', { class: 'lbl' }, 'Parola klavyesi'),
-      kbSel),
+      sel('idle', [[60, '1 dakika'], [300, '5 dakika'], [900, '15 dakika'], [0, 'Hiçbir zaman']])),
     h('div', { class: 'card' },
       h('div', { class: 'kv' }, h('span', {}, 'Kalıcı depolama'), h('span', {}, persisted === true ? 'Evet' : persisted === false ? 'Hayır' : '?')),
       h('div', { class: 'kv' }, h('span', {}, 'Kullanım'), h('span', {}, fmt(est.usage))),
