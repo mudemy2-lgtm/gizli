@@ -115,6 +115,17 @@ function pwField(label) {
   return { input, el: h('div', { class: 'pw' }, input, eye) };
 }
 
+// Yalnızca rakamlı parolada engellemeden hafif bir uyarı gösterir.
+function digitsHint(input) {
+  const p = h('p', { class: 'note' });
+  input.addEventListener('input', () => {
+    p.textContent = /^\d+$/.test(input.value)
+      ? 'Sadece rakamlı parola kolay tahmin edilir; mümkünse harf de ekle.'
+      : '';
+  });
+  return p;
+}
+
 function explain(e) {
   if (e instanceof VaultError) {
     const wait = e.until ? Math.max(1, Math.ceil((e.until - Date.now()) / 1000)) : 0;
@@ -135,7 +146,7 @@ function setupDialog(id) {
     type: 'text', placeholder: 'Klasör adı (isteğe bağlı)', maxlength: '40',
     autocomplete: 'off', autocorrect: 'off'
   });
-  const p1 = pwField('Parola (en az 8 karakter)');
+  const p1 = pwField('Parola (en az 6 karakter)');
   const p2 = pwField('Parolayı tekrar yaz');
   const err = h('p', { class: 'err' });
   const cancel = h('button', { onclick: closeModal }, 'Vazgeç');
@@ -144,7 +155,7 @@ function setupDialog(id) {
   async function submit() {
     if (go.disabled) return;
     err.textContent = '';
-    if (p1.input.value.length < 8) { err.textContent = 'Parola en az 8 karakter olmalı.'; return; }
+    if (p1.input.value.length < 6) { err.textContent = 'Parola en az 6 karakter olmalı.'; return; }
     if (p1.input.value !== p2.input.value) { err.textContent = 'Parolalar aynı değil.'; return; }
     go.disabled = true; go.textContent = 'Kuruluyor…';
     try {
@@ -162,7 +173,7 @@ function setupDialog(id) {
   go.addEventListener('click', submit);
   enterOnSubmit([name, p1.input, p2.input], submit);
   openModal('Klasör ' + id + ' kur',
-    h('div', {}, name, p1.el, p2.el,
+    h('div', {}, name, p1.el, p2.el, digitsHint(p1.input),
       h('p', { class: 'note' }, 'Parolayı unutursan içeriği kurtarmanın yolu yok. Güvenli bir yere yaz.'), err),
     [cancel, go]);
 }
@@ -240,7 +251,7 @@ function renameDialog(id) {
 
 function changePwDialog(id) {
   const old = pwField('Şimdiki parola');
-  const n1 = pwField('Yeni parola (en az 8 karakter)');
+  const n1 = pwField('Yeni parola (en az 6 karakter)');
   const n2 = pwField('Yeni parolayı tekrar yaz');
   const err = h('p', { class: 'err' });
   const cancel = h('button', { onclick: closeModal }, 'Vazgeç');
@@ -248,7 +259,7 @@ function changePwDialog(id) {
   async function submit() {
     if (go.disabled) return;
     err.textContent = '';
-    if (n1.input.value.length < 8) { err.textContent = 'Yeni parola en az 8 karakter olmalı.'; return; }
+    if (n1.input.value.length < 6) { err.textContent = 'Yeni parola en az 6 karakter olmalı.'; return; }
     if (n1.input.value !== n2.input.value) { err.textContent = 'Yeni parolalar aynı değil.'; return; }
     go.disabled = true; go.textContent = 'Değiştiriliyor…';
     try {
@@ -262,7 +273,7 @@ function changePwDialog(id) {
   }
   go.addEventListener('click', submit);
   enterOnSubmit([old.input, n1.input, n2.input], submit);
-  openModal('Parolayı değiştir', h('div', {}, old.el, n1.el, n2.el, err), [cancel, go]);
+  openModal('Parolayı değiştir', h('div', {}, old.el, n1.el, n2.el, digitsHint(n1.input), err), [cancel, go]);
 }
 
 /* ---------- Ekranlar ---------- */

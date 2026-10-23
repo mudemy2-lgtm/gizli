@@ -24,7 +24,7 @@ const rnd = n => crypto.getRandomValues(new Uint8Array(n));
 const aad = (id, part) => te.encode('gizli:v1:' + id + ':' + part);
 
 export function createVault(store, opts = {}) {
-  const ITER = opts.iterations || 1000000;
+  const ITER = opts.iterations || 2000000;
   const now = opts.now || (() => Date.now());
   const FREE_TRIES = 5;
 
