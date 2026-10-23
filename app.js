@@ -43,7 +43,7 @@ function toast(msg) {
 
 /* ---------- Ayarlar ---------- */
 const SETTINGS_KEY = 'gizli.settings';
-const DEFAULTS = { bg: 30, idle: 300 }; // bg: arka planda kaç sn sonra kilit (0 hemen, -1 hiç); idle: boşta kilit sn (0 hiç)
+const DEFAULTS = { bg: 30, idle: 300, kbd: 'num' }; // kbd: parola alanında 'num' sayısal, 'text' normal klavye; // bg: arka planda kaç sn sonra kilit (0 hemen, -1 hiç); idle: boşta kilit sn (0 hiç)
 function loadSettings() {
   try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); }
   catch (e) { return Object.assign({}, DEFAULTS); }
@@ -100,11 +100,33 @@ function openModal(title, body, actions) {
   return box;
 }
 
+function applyKb(input) {
+  if (settings.kbd === 'num') {
+    input.setAttribute('inputmode', 'numeric');
+    input.setAttribute('pattern', '[0-9]*');
+  } else {
+    input.setAttribute('inputmode', 'text');
+    input.removeAttribute('pattern');
+  }
+}
+
+function setKb(mode) {
+  settings.kbd = mode;
+  saveSettings(settings);
+  document.querySelectorAll('input[data-pw]').forEach(applyKb);
+  document.querySelectorAll('button[data-kb]').forEach(b => { b.textContent = settings.kbd === 'num' ? 'ABC' : '123'; });
+}
+
 function pwField(label) {
   const input = h('input', {
     type: 'password', autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off',
-    spellcheck: 'false', placeholder: label, 'aria-label': label
+    spellcheck: 'false', placeholder: label, 'aria-label': label, 'data-pw': '1'
   });
+  applyKb(input);
+  const kb = h('button', {
+    class: 'kb', type: 'button', 'data-kb': '1', 'aria-label': 'Klavye türünü değiştir',
+    onclick: () => { setKb(settings.kbd === 'num' ? 'text' : 'num'); input.blur(); input.focus(); }
+  }, settings.kbd === 'num' ? 'ABC' : '123');
   const eye = h('button', {
     class: 'eye', type: 'button',
     onclick: () => {
@@ -112,7 +134,7 @@ function pwField(label) {
       eye.textContent = input.type === 'password' ? 'Göster' : 'Gizle';
     }
   }, 'Göster');
-  return { input, el: h('div', { class: 'pw' }, input, eye) };
+  return { input, el: h('div', { class: 'pw' }, input, kb, eye) };
 }
 
 // Yalnızca rakamlı parolada engellemeden hafif bir uyarı gösterir.
@@ -120,7 +142,7 @@ function digitsHint(input) {
   const p = h('p', { class: 'note' });
   input.addEventListener('input', () => {
     p.textContent = /^\d+$/.test(input.value)
-      ? 'Sadece rakamlı parola kolay tahmin edilir; mümkünse harf de ekle.'
+      ? 'Sadece rakamlı parola: ne kadar uzunsa o kadar güvenli (8 veya daha fazla rakam önerilir).'
       : '';
   });
   return p;
@@ -334,6 +356,10 @@ async function settingsView() {
     return s;
   };
 
+  const kbSel = h('select', { onchange: () => setKb(kbSel.value) },
+    h('option', { value: 'num', selected: settings.kbd === 'num' }, 'Sayısal (rakam klavyesi)'),
+    h('option', { value: 'text', selected: settings.kbd !== 'num' }, 'Normal (harf ve rakam)'));
+
   const persistBtn = h('button', {
     class: 'row-btn',
     onclick: async () => {
@@ -350,7 +376,9 @@ async function settingsView() {
       h('span', { class: 'lbl' }, 'Arka plana geçince kilitle'),
       sel('bg', [[0, 'Hemen'], [30, '30 saniye sonra'], [120, '2 dakika sonra'], [-1, 'Kilitleme']]),
       h('span', { class: 'lbl' }, 'Hareketsiz kalınca kilitle'),
-      sel('idle', [[60, '1 dakika'], [300, '5 dakika'], [900, '15 dakika'], [0, 'Hiçbir zaman']])),
+      sel('idle', [[60, '1 dakika'], [300, '5 dakika'], [900, '15 dakika'], [0, 'Hiçbir zaman']]),
+      h('span', { class: 'lbl' }, 'Parola klavyesi'),
+      kbSel),
     h('div', { class: 'card' },
       h('div', { class: 'kv' }, h('span', {}, 'Kalıcı depolama'), h('span', {}, persisted === true ? 'Evet' : persisted === false ? 'Hayır' : '?')),
       h('div', { class: 'kv' }, h('span', {}, 'Kullanım'), h('span', {}, fmt(est.usage))),

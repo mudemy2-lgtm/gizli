@@ -52,7 +52,9 @@ input[type=text], input[type=password], select {
 .lbl { color: var(--mut); font-size: 13px; margin: 10px 0 4px; display: block; }
 
 .pw { position: relative; }
-.pw input { padding-right: 84px; }
+.pw input { padding-right: 140px; }
+.pw .kb { position: absolute; right: 78px; top: 4px; padding: 8px 10px; border: 0; background: transparent;
+  color: var(--mut); font-size: 14px; }
 .pw .eye { position: absolute; right: 4px; top: 4px; padding: 8px 10px; border: 0; background: transparent;
   color: var(--acc); font-size: 14px; }
 
